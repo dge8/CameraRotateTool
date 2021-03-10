@@ -30,19 +30,19 @@ function Get-Camera {
         $DeviceRegistryId = '##?#' + ($PnpDevice.InstanceId -replace '\\','#') + '#'
         $SubDeviceKsCategories = @{}
         ForEach ($KsCategory in $KsCategories) {
-            $devicePath = $regDeviceClassesRoot + $ksCategory[1] + '\' + $DeviceRegistryId + $ksCategory[1]
-            If (-not (Test-Path -LiteralPath $devicePath)) { Continue }
-            $subDevicePaths = (Get-ChildItem -LiteralPath $devicePath).Name
-            ForEach ($subDevicePath in $subDevicePaths) {
-                If ( -not (Test-Path -LiteralPath ('Registry::' + $subDevicePath + "\Properties")) -or 
-                    -not (Test-Path -LiteralPath ('Registry::' + $subDevicePath + "\Device Parameters")) ) {
+            $DevicePath = $RegDeviceClassesRoot + $KsCategory[1] + '\' + $DeviceRegistryId + $KsCategory[1]
+            If (-not (Test-Path -LiteralPath $DevicePath)) { Continue }
+            $SubDevicePaths = (Get-ChildItem -LiteralPath $DevicePath).Name
+            ForEach ($SubDevicePath in $SubDevicePaths) {
+                If ( -not (Test-Path -LiteralPath ('Registry::' + $SubDevicePath + '\Properties')) -or 
+                    -not (Test-Path -LiteralPath ('Registry::' + $SubDevicePath + '\Device Parameters')) ) {
                     Continue
                 }
-                $subDeviceRegistryId = Split-Path -Path $subDevicePath -Leaf
-                If ( $subDeviceKsCategories.ContainsKey($subDeviceRegistryId) ) {
-                    $subDeviceKsCategories[$subDeviceRegistryId] += $ksCategory[0]
+                $SubDeviceRegistryId = Split-Path -Path $SubDevicePath -Leaf
+                If ( $SubDeviceKsCategories.ContainsKey($SubDeviceRegistryId) ) {
+                    $SubDeviceKsCategories[$SubDeviceRegistryId] += $KsCategory[0]
                 } Else {
-                    $subDeviceKsCategories[$subDeviceRegistryId] = @($ksCategory[0])
+                    $SubDeviceKsCategories[$SubDeviceRegistryId] = @($KsCategory[0])
                 }
             }
         }
@@ -58,17 +58,19 @@ function Get-Camera {
                 } Catch { }
                 Try {
                     $fsso = Get-ItemPropertyValue -LiteralPath $SubDeviceParameterPath -Name 'FSSensorOrientation'
-                    If ($FsSensorOrientations -notcontains $fsso) { $FsSensorOrientations += $fsso }
-                } Catch { }
+                } Catch {
+                    $fsso = '0'
+                }
+                If ($FsSensorOrientations -notcontains $fsso) { $FsSensorOrientations += $fsso }
             }
             If ($FsSensorOrientations.Count -eq 0) { $FsSensorOrientations += '0' }
             $i += 1
             $Cameras += [PSCustomObject]@{
                 Id                  = $i
                 Device              = $PnpDevice.FriendlyName
-                Name                = $SubDeviceNames -join '/'
+                Name                = $SubDeviceNames -join ','
                 Status              = $PnpDevice.Status
-                Orientation         = $FsSensorOrientations -join '/'
+                Orientation         = $FsSensorOrientations -join ','
                 DeviceInstanceId    = $PnpDevice.InstanceId
                 KsCategories        = $_.Value
                 DeviceRegistryId    = $DeviceRegistryId
@@ -85,7 +87,7 @@ Function Set-CameraOrientation {
         [PSCustomObject]$Camera,
         [String]$NewOrientation
     )
-    If ('0','90','180','270' -notcontains $NewOrientation) { Throw "Orientation must be one of [0,90,180,270]." }
+    If ('0','90','180','270' -notcontains $NewOrientation) { Throw 'Orientation must be one of [0,90,180,270].' }
     ForEach ($KsCategoryName in $Camera.KsCategories) {
         $KsCategoryId = ($KsCategories | Where {$_[0] -eq $KsCategoryName})[1]
         $DeviceParameterPath = $RegDeviceClassesRoot + $KsCategoryId + '\' + $Camera.DeviceRegistryId + $KsCategoryId + '\' + $Camera.SubDeviceRegistryId + '\Device Parameters'
@@ -101,7 +103,7 @@ Function Set-CameraOrientation {
 If ( [Environment]::OSVersion.Version.Major -ne 10 -or 
     [Environment]::OSVersion.Version.Build -lt 14393 -or
     $Host.Version.Major -lt 5 ) {
-    Write-Host "Error: CameraRotateTool requires at least Windows 10 1607 and PowerShell 5.0" -ForegroundColor Red
+    Write-Host 'Error: CameraRotateTool requires at least Windows 10 1607 and PowerShell 5.0' -ForegroundColor Red
     Write-Host ''
     Read-Host -Prompt "Press Enter to exit"
 }
@@ -110,9 +112,9 @@ If ( [Environment]::OSVersion.Version.Major -ne 10 -or
 If ( -not (New-Object Security.Principal.WindowsPrincipal(
     [Security.Principal.WindowsIdentity]::GetCurrent()
     )).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        $process = New-Object System.Diagnostics.ProcessStartInfo "PowerShell"
+        $process = New-Object System.Diagnostics.ProcessStartInfo 'PowerShell'
         $process.Arguments = $MyInvocation.MyCommand.Definition
-        $process.Verb = "runas"
+        $process.Verb = 'runas'
         [System.Diagnostics.Process]::Start($process) | Out-Null
         Exit
     }
@@ -129,10 +131,10 @@ While ($true) {
     Write-Host ''
     $Cameras = Get-Camera    
     
-    If (($Cameras | Measure-Object).Count -eq 0) {
-        Write-Host "Error: Could not identify any compatible connected cameras or imaging devices." -ForegroundColor Red
+    If ( $Cameras.Count -eq 0 ) {
+        Write-Host 'Error: Could not identify any compatible connected cameras or imaging devices.' -ForegroundColor Red
         Write-Host ''
-        Read-Host -Prompt "Press Enter to exit"
+        Read-Host -Prompt 'Press Enter to exit'
         Exit
     }
     
